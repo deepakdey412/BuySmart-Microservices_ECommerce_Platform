@@ -1,0 +1,363 @@
+version: '3.8'
+
+services:
+  # MySQL Databases
+  mysql-auth:
+    image: mysql:8.0
+    container_name: mysql-auth
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: auth_db
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql-auth-data:/var/lib/mysql
+    networks:
+      - ecommerce-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mysql-product:
+    image: mysql:8.0
+    container_name: mysql-product
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: product_db
+    ports:
+      - "3308:3306"
+    volumes:
+      - mysql-product-data:/var/lib/mysql
+    networks:
+      - ecommerce-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mysql-inventory:
+    image: mysql:8.0
+    container_name: mysql-inventory
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: inventory_db
+    ports:
+      - "3309:3306"
+    volumes:
+      - mysql-inventory-data:/var/lib/mysql
+    networks:
+      - ecommerce-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mysql-cart:
+    image: mysql:8.0
+    container_name: mysql-cart
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: cart_db
+    ports:
+      - "3310:3306"
+    volumes:
+      - mysql-cart-data:/var/lib/mysql
+    networks:
+      - ecommerce-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mysql-order:
+    image: mysql:8.0
+    container_name: mysql-order
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: order_db
+    ports:
+      - "3311:3306"
+    volumes:
+      - mysql-order-data:/var/lib/mysql
+    networks:
+      - ecommerce-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mysql-payment:
+    image: mysql:8.0
+    container_name: mysql-payment
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: payment_db
+    ports:
+      - "3312:3306"
+    volumes:
+      - mysql-payment-data:/var/lib/mysql
+    networks:
+      - ecommerce-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mysql-notification:
+    image: mysql:8.0
+    container_name: mysql-notification
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: notification_db
+    ports:
+      - "3313:3306"
+    volumes:
+      - mysql-notification-data:/var/lib/mysql
+    networks:
+      - ecommerce-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Zookeeper
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - ecommerce-network
+
+  # Kafka
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - ecommerce-network
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # Eureka Service Registry
+  eureka-server:
+    build:
+      context: ./eureka-service-registry
+      dockerfile: Dockerfile
+    container_name: eureka-server
+    ports:
+      - "8761:8761"
+    networks:
+      - ecommerce-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8761/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Config Server
+  config-server:
+    build:
+      context: ./config-server
+      dockerfile: Dockerfile
+    container_name: config-server
+    ports:
+      - "8888:8888"
+    depends_on:
+      - eureka-server
+    networks:
+      - ecommerce-network
+
+  # Auth User Service
+  auth-user-service:
+    build:
+      context: ./auth-user-service
+      dockerfile: Dockerfile
+    container_name: auth-user-service
+    ports:
+      - "8081:8081"
+    depends_on:
+      - mysql-auth
+      - eureka-server
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql-auth:3306/auth_db?createDatabaseIfNotExist=true
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: rootpassword
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://eureka-server:8761/eureka/
+    networks:
+      - ecommerce-network
+
+  # Product Catalog Service
+  product-catalog-service:
+    build:
+      context: ./product-catalog-service
+      dockerfile: Dockerfile
+    container_name: product-catalog-service
+    ports:
+      - "8082:8082"
+    depends_on:
+      - mysql-product
+      - eureka-server
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql-product:3306/product_db?createDatabaseIfNotExist=true
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: rootpassword
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://eureka-server:8761/eureka/
+    networks:
+      - ecommerce-network
+
+  # Inventory Service
+  inventory-service:
+    build:
+      context: ./inventory-service
+      dockerfile: Dockerfile
+    container_name: inventory-service
+    ports:
+      - "8083:8083"
+    depends_on:
+      - mysql-inventory
+      - kafka
+      - eureka-server
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql-inventory:3306/inventory_db?createDatabaseIfNotExist=true
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: rootpassword
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://eureka-server:8761/eureka/
+    networks:
+      - ecommerce-network
+
+  # Cart Service
+  cart-service:
+    build:
+      context: ./cart-service
+      dockerfile: Dockerfile
+    container_name: cart-service
+    ports:
+      - "8084:8084"
+    depends_on:
+      - mysql-cart
+      - eureka-server
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql-cart:3306/cart_db?createDatabaseIfNotExist=true
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: rootpassword
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://eureka-server:8761/eureka/
+    networks:
+      - ecommerce-network
+
+  # Order Service
+  order-service:
+    build:
+      context: ./order-service
+      dockerfile: Dockerfile
+    container_name: order-service
+    ports:
+      - "8085:8085"
+    depends_on:
+      - mysql-order
+      - kafka
+      - eureka-server
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql-order:3306/order_db?createDatabaseIfNotExist=true
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: rootpassword
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://eureka-server:8761/eureka/
+    networks:
+      - ecommerce-network
+
+  # Payment Service
+  payment-service:
+    build:
+      context: ./payment-service
+      dockerfile: Dockerfile
+    container_name: payment-service
+    ports:
+      - "8086:8086"
+    depends_on:
+      - mysql-payment
+      - eureka-server
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql-payment:3306/payment_db?createDatabaseIfNotExist=true
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: rootpassword
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://eureka-server:8761/eureka/
+    networks:
+      - ecommerce-network
+
+  # Notification Service
+  notification-service:
+    build:
+      context: ./notification-service
+      dockerfile: Dockerfile
+    container_name: notification-service
+    ports:
+      - "8087:8087"
+    depends_on:
+      - mysql-notification
+      - kafka
+      - eureka-server
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql-notification:3306/notification_db?createDatabaseIfNotExist=true
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: rootpassword
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://eureka-server:8761/eureka/
+    networks:
+      - ecommerce-network
+
+  # API Gateway
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    container_name: api-gateway
+    ports:
+      - "8080:8080"
+    depends_on:
+      - eureka-server
+      - auth-user-service
+      - product-catalog-service
+      - inventory-service
+      - cart-service
+      - order-service
+      - payment-service
+      - notification-service
+    environment:
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://eureka-server:8761/eureka/
+    networks:
+      - ecommerce-network
+
+volumes:
+  mysql-auth-data:
+  mysql-product-data:
+  mysql-inventory-data:
+  mysql-cart-data:
+  mysql-order-data:
+  mysql-payment-data:
+  mysql-notification-data:
+
+networks:
+  ecommerce-network:
+    driver: bridge
