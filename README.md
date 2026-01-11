@@ -164,7 +164,3 @@ mvn test
 # Run specific service tests
 cd <service-name> && mvn test
 ```
-
-## License
-
-MIT License
